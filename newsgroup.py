@@ -1,4 +1,5 @@
 import sys
+import itertools
 import matplotlib.pyplot as plt
 import numpy as np
 import nltk
@@ -15,12 +16,15 @@ from sklearn.random_projection import sparse_random_matrix
 from sklearn.decomposition import NMF
 from sklearn import svm
 from sklearn.metrics import roc_curve, auc
+from sklearn.metrics import confusion_matrix
 from sklearn.model_selection import train_test_split
 from sklearn import metrics
 from sklearn.model_selection import cross_val_score
+from sklearn.model_selection import GridSearchCV
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
+from sklearn.multiclass import OneVsRestClassifier
 
 categories = ['comp.graphics',
               'comp.os.ms-windows.misc',
@@ -129,31 +133,11 @@ def SVM_classifier(X,y,gam):
     print('\t-- accuracy score: %.3f' % metrics.accuracy_score(y_test, y_test_pred) )
     print('\t-- recall score: %.3f' % metrics.recall_score(y_test, y_test_pred) )
     print('\t-- precision score: %.3f' % metrics.precision_score(y_test, y_test_pred) )
-    #print metrics.confusion_matrix(y_test, y_test_pred)
-
-    # fpr, tpr, thresholds = roc_curve(y_test, y_test_pred,pos_label = 2)
-    # roc_auc = auc(fpr, tpr)  
-    
-    # print 'ROC AUC: %0.2f' % roc_auc
-
-    # # Plot of a ROC curve for a specific class
-    # plt.figure()
-    # plt.plot(fpr, tpr, label='ROC curve (area = %0.2f)' % roc_auc)
-    # plt.plot([0, 1], [0, 1], 'k--')
-    # plt.xlim([0.0, 1.0])
-    # plt.ylim([0.0, 1.05])
-    # plt.xlabel('False Positive Rate')
-    # plt.ylabel('True Positive Rate')
-    # plt.title('ROC Curve')
-    # plt.legend(loc="lower right")
-    # plt.show()
-
 
 def SVM_cross_val(X,y,gam):
     clf = svm.SVC(kernel='linear', C=gam)
     scores = cross_val_score(clf, X, y, cv=5, scoring='accuracy')
     #print  '%f  %f '%(gam,scores.mean())
-
 
 def NB_classifier(X, y):
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
@@ -178,21 +162,57 @@ def Log_classifier(X, y, norm='l2', regular_para=1.0):
 def plot_roc(fpr, tpr):
     fig, ax = plt.subplots()
 
-    roc_auc = auc(fpr,tpr)
+    roc_auc = auc(fpr, tpr)
 
-    ax.plot(fpr, tpr, lw=2, label= 'area under curve = %0.4f' % roc_auc)
+    ax.plot(fpr, tpr, lw=2, label='area under curve = %0.4f' % roc_auc)
 
     ax.grid(color='0.7', linestyle='--', linewidth=1)
 
     ax.set_xlim([-0.1, 1.1])
     ax.set_ylim([0.0, 1.05])
-    ax.set_xlabel('False Positive Rate',fontsize=15)
-    ax.set_ylabel('True Positive Rate',fontsize=15)
+    ax.set_xlabel('False Positive Rate', fontsize=15)
+    ax.set_ylabel('True Positive Rate', fontsize=15)
 
     ax.legend(loc="lower right")
 
     for label in ax.get_xticklabels()+ax.get_yticklabels():
         label.set_fontsize(15)
+
+def plot_confusion_matrix(cm, classes,
+                          normalize=False,
+                          title='Confusion matrix',
+                          cmap=plt.cm.Blues):
+    """
+    This function prints and plots the confusion matrix.
+    Normalization can be applied by setting `normalize=True`.
+    """
+    if normalize:
+        cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
+        print("Normalized confusion matrix")
+    else:
+        print('Confusion matrix, without normalization')
+
+    print(cm)
+
+    plt.imshow(cm, interpolation='nearest', cmap=cmap)
+    plt.title(title)
+    plt.colorbar()
+    tick_marks = np.arange(len(classes))
+    plt.xticks(tick_marks, classes)
+    plt.yticks(tick_marks, classes)
+
+    fmt = '.2f' if normalize else 'd'
+    thresh = cm.max() / 2.
+    for i, j in itertools.product(range(cm.shape[0]), range(cm.shape[1])):
+        plt.text(j, i, format(cm[i, j], fmt),
+                 horizontalalignment="center",
+                 color="white" if cm[i, j] > thresh else "black")
+    plt.show()
+
+def evaluate(y_true, y_pred):
+    print('\t-- accuracy score: %.3f' % metrics.accuracy_score(y_true, y_pred))
+    print('\t-- recall score: %.3f' % metrics.recall_score(y_true, y_pred))
+    print('\t-- precision score: %.3f' % metrics.precision_score(y_true, y_pred))
 
 def main():
     args = sys.argv
@@ -202,6 +222,26 @@ def main():
 
     newsgroups_train = fetch_20newsgroups(subset='train', categories=categories, shuffle=True, random_state=42)
     newsgroups_test = fetch_20newsgroups(subset='test', categories=categories, shuffle=True, random_state=42)
+    # prepare data for e-h
+    # [0 'comp.graphics',
+    # 1   'comp.os.ms-windows.misc',
+    # 2   'comp.sys.ibm.pc.hardware',
+    # 3   'comp.sys.mac.hardware',
+    # 4   'rec.autos',
+    # 5   'rec.motorcycles',
+    # 6   'rec.sport.baseball',
+    # 7   'rec.sport.hockey']
+    # 0-3 ---> 0
+    # 4-7 ---> 1
+    y_train = np.zeros(len(newsgroups_train.target))
+    for i in range(len(y_train)):
+        if newsgroups_train.target[i] >= 4:
+            y_train[i] = 1
+    y_test = np.zeros(len(newsgroups_test.target))
+    for i in range(len(y_test)):
+        if newsgroups_test.target[i] >= 4:
+            y_test[i] = 1
+
 
     # task a
     #  plot a histogram of the number of training documents
@@ -218,37 +258,21 @@ def main():
     elif args[1] == 'd':
         apply_LSI(newsgroups_train)
         apply_NMF(newsgroups_train)
-    # prepare data for e-h
-    # [0 'comp.graphics',   
-    # 1   'comp.os.ms-windows.misc', 
-    # 2   'comp.sys.ibm.pc.hardware', 
-    # 3   'comp.sys.mac.hardware',
-    # 4   'rec.autos', 
-    # 5   'rec.motorcycles', 
-    # 6   'rec.sport.baseball', 
-    # 7   'rec.sport.hockey']
-    # 0-3 ---> 0
-    # 4-7 ---> 1
-    # y = np.zeros(len(newsgroups_train.data))
-    # for i in range (len(newsgroups_train.data)):
-    #     if newsgroups_train.target[i]<=3:
-    #         y[i]=0
-    #     else:
-    #         y[i]=1
-    # print y
-    # X = apply_lsi(newsgroups_train)
-    #X = apply_NMF(newsgroups_train)
-    # X = convert_to_tfidf(newsgroups_train)
-    #print X.shape
     # task e
     elif args[1] == 'e':
-        SVM_classifier(X,y,1000)
-        SVM_classifier(X,y,0.001)
-    
+        pipeline1 = Pipeline([('tfidf', TfidfVectorizer(tokenizer=StemTokenizer(), stop_words='english', min_df=5)),
+                              ('lsi', TruncatedSVD(n_components=50, random_state=42)),
+                              ('clf', svm.SVC(kernel='linear', C=1000))])
+        pipeline2 = Pipeline([('tfidf', TfidfVectorizer(tokenizer=StemTokenizer(), stop_words='english', min_df=5)),
+                              ('nmf', NMF(n_components=50, init='random', random_state=0)),
+                              ('clf', svm.SVC(kernel='linear', C=0.001))])
+        pipeline1.fit(newsgroups_train.data, y_train)
+        y_test_pred = pipeline1.predict(newsgroups_test.data)
+        cnf_matrix = confusion_matrix(y_test, y_test_pred)
+        plot_confusion_matrix(cnf_matrix, ['computer', 'recreation'])
+        tn, fp, fn, tp = cnf_matrix.ravel()
+        print(tn, fp, fn, tp)
 
-    # fpr, tpr, thresholds = roc_curve(y_test, y_test_pred,pos_label = 2)
-    # roc_auc = auc(fpr, tpr)  
-    
     # print 'ROC AUC: %0.2f' % roc_auc
 
     # # Plot of a ROC curve for a specific class
@@ -266,9 +290,14 @@ def main():
 
     # task f
     elif args[1] == 'f':
-        for i in range (-3,4):
-            SVM_cross_val(X,y,pow(10,i))
-
+        pipe = Pipeline([('tfidf', TfidfVectorizer(tokenizer=StemTokenizer(), stop_words='english', min_df=5)),
+                         ('lsi', TruncatedSVD(n_components=50, random_state=42)),
+                         ('clf', svm.SVC(kernel='linear'))])
+        tuned_parameters = {'clf__C': [10**k for k in range(-3, 4)]}
+        grid = GridSearchCV(pipe, tuned_parameters, cv=5)
+        grid.fit(newsgroups_train.data, newsgroups_train.target)
+        print(grid.best_params_)
+        print(grid.cv_results_)
 
     # task g
     elif args[1] == 'g':
@@ -283,16 +312,16 @@ def main():
     elif args[1] == 'j':
         train_set = fetch_20newsgroups(subset='train', categories=classes)
         test_set = fetch_20newsgroups(subset='test', categories=classes)
-       
-        pipeline = Pipeline([('vect', CountVectorizer(min_df=5, stop_words='english')),
-                             ('tfidf', TfidfTransformer()),
-                             ('reduce_dim', NMF(n_components=50, init='random', random_state=0)),
-                             ('clf', MultinomialNB())])
-        pipeline.fit(train_set.data, train_set.target)
-        predicted = pipeline.predict(test_set.data)
-        print('\t-- accuracy score: %.3f' % metrics.accuracy_score(test_set.target, predicted))
-        # print('\t-- recall score: %.3f' % metrics.recall_score(test_set.target, predicted))
-        # print('\t-- precision score: %.3f' % metrics.precision_score(test_set.target, predicted))
+        tfidf = TfidfVectorizer(tokenizer=StemTokenizer(), stop_words='english', min_df=5).fit_transform(train_set.data)
+        nmf = NMF(n_components=50, init='random', random_state=0).fit_transform(tfidf)
+
+        nb = MultinomialNB().fit(nmf, train_set.target)
+
+        # The multiclass support of SVC is handled according to a one-vs-one scheme.
+        ovo = svm.SVC(kernel='linear').fit(nmf, train_set.target)
+
+        ovr = OneVsRestClassifier(svm.SVC(kernel='linear')).fit(nmf, train_set.target)
+        
 
     else:
         print("undefined")
