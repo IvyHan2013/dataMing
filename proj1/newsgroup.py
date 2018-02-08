@@ -156,7 +156,7 @@ def plot_confusion_matrix(cm, classes,
     plt.title(title)
     plt.colorbar()
     tick_marks = np.arange(len(classes))
-    plt.xticks(tick_marks, classes, rotation=45)
+    plt.xticks(tick_marks, classes, rotation=15)
     plt.yticks(tick_marks, classes)
 
     fmt = '.2f' if normalize else 'd'
@@ -262,7 +262,7 @@ def main():
     # task g
     # binary naive bayes
     elif args[1] == 'g':
-        pipe = Pipeline([('tfidf', TfidfVectorizer(tokenizer=StemTokenizer(), stop_words='english', min_df=5)),
+        pipe = Pipeline([('tfidf', TfidfVectorizer(tokenizer=StemTokenizer(), stop_words='english', min_df=2)),
                          ('nmf', NMF(n_components=50, init='random', random_state=42)),
                          ('clf', MultinomialNB())])
         pipe.fit(newsgroups_train.data, y_train)
@@ -273,7 +273,7 @@ def main():
     # task h
     # binary logistic regression
     elif args[1] == 'h':
-        pipe = Pipeline([('tfidf', TfidfVectorizer(tokenizer=StemTokenizer(), stop_words='english', min_df=5)),
+        pipe = Pipeline([('tfidf', TfidfVectorizer(tokenizer=StemTokenizer(), stop_words='english', min_df=2)),
                          ('nmf', NMF(n_components=50, init='random', random_state=42)),
                          ('clf', LogisticRegression())])
         pipe.fit(newsgroups_train.data, y_train)
@@ -283,7 +283,7 @@ def main():
 
     # task i
     elif args[1] == 'i':
-        pipe = Pipeline([('tfidf', TfidfVectorizer(tokenizer=StemTokenizer(), stop_words='english', min_df=5)),
+        pipe = Pipeline([('tfidf', TfidfVectorizer(tokenizer=StemTokenizer(), stop_words='english', min_df=2)),
                          ('nmf', NMF(n_components=50, init='random', random_state=42)),
                          ('clf', LogisticRegression())])
         tuned_parameters = {'clf__penalty': ['l1', 'l2'],
