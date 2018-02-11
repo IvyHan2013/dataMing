@@ -3,28 +3,23 @@ import itertools
 import matplotlib.pyplot as plt
 import numpy as np
 import nltk
+import gc
 
-from nltk.stem.porter import PorterStemmer
-from nltk.tokenize import RegexpTokenizer
-from sklearn.feature_extraction import text
-from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.datasets import fetch_20newsgroups
-from sklearn.feature_extraction.text import TfidfTransformer
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.decomposition import TruncatedSVD
 from sklearn.random_projection import sparse_random_matrix
 from sklearn.decomposition import NMF
-from sklearn import svm
-from sklearn.metrics import roc_curve, auc
 from sklearn.metrics import confusion_matrix
 from sklearn.model_selection import train_test_split
 from sklearn import metrics
-from sklearn.model_selection import cross_val_score
 from sklearn.model_selection import GridSearchCV
-from sklearn.naive_bayes import MultinomialNB
-from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
-from sklearn.multiclass import OneVsRestClassifier
+
+from sklearn.cluster import KMeans
+from sklearn.metrics.cluster import contingency_matrix
+from sklearn.decomposition import PCA
+from sklearn import preprocessing
 
 categories = ['comp.graphics',
               'comp.os.ms-windows.misc',
@@ -41,100 +36,6 @@ mult_classes = ['comp.sys.ibm.pc.hardware',
                 'soc.religion.christian']
 
 bin_classes = ['Computer Technology', 'Recreational Activity']
-
-def plot_histogram(newsgroups_train):
-    '''
-    Plot the document size per class histogram
-    '''
-    class_size = np.bincount(newsgroups_train.target)
-    # print(class_size)
-    # [584, 591, 590, 578, 594, 598, 597, 600]
-
-    n_groups = 8
-    bar_width = 0.35
-    opacity = 0.4
-    plt.bar(range(n_groups), class_size, width=bar_width, alpha=opacity, color='b')
-
-    plt.xlabel('Class')
-    plt.ylabel('Number of Documnets')
-    plt.title('Number of training documents per class')
-
-    plt.show()
-
-class StemTokenizer(object):
-    '''
-    override the tokenizer in CountVectorizer
-    with stemming and reomoving punctuation
-    '''
-    def __init__(self):
-        self.tokenizer = CountVectorizer().build_tokenizer()
-        self.stemmer = PorterStemmer()
-    def __call__(self, doc):
-        return [self.stemmer.stem(w) for w in self.tokenizer(doc)]
-
-def convert_to_tfidf(doc, min_df=2):
-    '''
-    Transform raw docs to TF-IDF feature vectors
-    '''
-    vectorizer = TfidfVectorizer(tokenizer=StemTokenizer(), stop_words='english', min_df=min_df)
-    tfidf = vectorizer.fit_transform(doc)
-    print("With min_df as {0}, features shape: {1}".format(min_df, tfidf.shape))
-    return tfidf
-
-def convert_to_tficf():
-    '''
-    Transform raw docs to TF-ICF feature vectors
-    '''
-    train = fetch_20newsgroups(subset='train', shuffle=True, random_state=42)
-
-    class_text = [""]*20
-    for i in range(len(train.data)):
-        cat_index = train.target[i]
-        class_text[cat_index] += (" "+train.data[i])
-    tfidf_vectorizer = TfidfVectorizer(tokenizer=StemTokenizer(), stop_words='english')
-    tfidf = tfidf_vectorizer.fit_transform(class_text)
-
-    for i in range(20):
-        if train.target_names[i] in mult_classes:
-            cur_class = tfidf.toarray()[i]
-            top_ten_index = sorted(range(len(cur_class)), key=lambda index: cur_class[index])[-10:]
-            top_ten_term = []
-            for index in top_ten_index:
-                top_ten_term.append(tfidf_vectorizer.get_feature_names()[index])
-            print(train.target_names[i])
-            print(top_ten_term)
-
-def apply_LSI(train):
-
-    svd = TruncatedSVD(n_components=50, random_state=42)
-    SVD_train = svd.fit_transform(convert_to_tfidf(train))
-    print(SVD_train.shape)
-    return SVD_train
-
-def apply_NMF(train):
-    model = NMF(n_components=50, init='random', random_state=42)
-    W_train = model.fit_transform(convert_to_tfidf(train))
-    print(W_train.shape)
-    return W_train
-
-def plot_roc(fpr, tpr):
-    '''
-    Plot of a ROC curve for a specific class
-    '''
-    roc_auc = auc(fpr, tpr)
-    print('ROC AUC: %0.4f' % roc_auc)
-
-    plt.figure()
-    plt.plot(fpr, tpr, label='ROC curve (area = %0.4f)' % roc_auc)
-    plt.plot([0, 1], [0, 1], 'k--')
-    plt.grid(color='0.7', linestyle='--', linewidth=1)
-    plt.xlim([-0.1, 1.0])
-    plt.ylim([0.0, 1.05])
-    plt.xlabel('False Positive Rate')
-    plt.ylabel('True Positive Rate')
-    plt.title('ROC Curve')
-    plt.legend(loc="lower right")
-    plt.show()
 
 def plot_confusion_matrix(cm, classes,
                           normalize=False,
@@ -167,22 +68,21 @@ def plot_confusion_matrix(cm, classes,
                  color="white" if cm[i, j] > thresh else "black")
     plt.show()
 
-def evaluate(y_true, y_pred, y_score, y_label, binary=True):
+def evaluate(y_true, y_pred):
     '''
     Evaluation by given metrics
     '''
-    if binary:
-        fpr, tpr, _ = roc_curve(y_true, y_score)
-        plot_roc(fpr, tpr)
-    cnf_matrix = confusion_matrix(y_true, y_pred)
-    plot_confusion_matrix(cnf_matrix, y_label)
-    print('\t-- accuracy score: %.3f' % metrics.accuracy_score(y_true, y_pred))
-    if binary:
-        print('\t-- recall score: %.3f' % metrics.recall_score(y_true, y_pred))
-        print('\t-- precision score: %.3f' % metrics.precision_score(y_true, y_pred))
-    else:
-        print('\t-- recall score: %.3f' % metrics.recall_score(y_true, y_pred, average='macro'))
-        print('\t-- precision score: %.3f' % metrics.precision_score(y_true, y_pred, average='macro'))
+    print(contingency_matrix(y_true, y_pred))
+    print("Homogeneity: %0.3f" % metrics.homogeneity_score(y_true, y_pred))
+    print("Completeness: %0.3f" % metrics.completeness_score(y_true, y_pred))
+    print("V-measure: %0.3f" % metrics.v_measure_score(y_true, y_pred))
+    print("Adjusted Rand-Index: %.3f" % metrics.adjusted_rand_score(y_true, y_pred))
+    print("Adjusted Mutal Info: %.3f" % metrics.adjusted_mutual_info_score(y_true, y_pred))
+
+def visualize(X, y, centers):
+    plt.scatter(X[:, 0], X[:, 1], c=y, cmap='viridis')
+    plt.scatter(centers[:, 0], centers[:, 1], c='black', s=50, alpha=0.5)
+    plt.show()
 
 def main():
     args = sys.argv
@@ -212,111 +112,96 @@ def main():
         if newsgroups_test.target[i] >= 4:
             y_test[i] = 1
 
-    # task a
-    # plot a histogram of the number of training documents
-    # per class to check if they are evenly distributed
-    if args[1] == 'a':
-        plot_histogram(newsgroups_train)
-    # task b
-    elif args[1] == 'b':
-        convert_to_tfidf(newsgroups_train.data, min_df=2)
-        convert_to_tfidf(newsgroups_train.data, min_df=5)
-    # task c
-    elif args[1] == 'c':
-        convert_to_tficf()
-    # task d
-    elif args[1] == 'd':
-        apply_LSI(newsgroups_train.data)
-        apply_NMF(newsgroups_train.data)
-    # task e
-    # binary SVM
-    elif args[1] == 'e':
-        pipe = Pipeline([('tfidf', TfidfVectorizer(tokenizer=StemTokenizer(), stop_words='english')),
-                         ('lsi', TruncatedSVD(n_components=50, random_state=42)),
-                         ('clf', svm.SVC(kernel='linear'))])
-        param_grid = [{'clf__C': 1000, 'tfidf__min_df': 2},
-                      {'clf__C': 1000, 'tfidf__min_df': 5},
-                      {'clf__C': 0.001, 'tfidf__min_df': 2},
-                      {'clf__C': 0.001, 'tfidf__min_df': 5}]
-        for param in param_grid:
-            print(param)
-            pipe.set_params(**param)
-            pipe.fit(newsgroups_train.data, y_train)
-            y_score = pipe.decision_function(newsgroups_test.data)
-            y_test_pred = pipe.predict(newsgroups_test.data)
-            evaluate(y_test, y_test_pred, y_score, bin_classes)
+    tfidf_vectorizer = TfidfVectorizer(stop_words='english', min_df=3)
+    tfidf = tfidf_vectorizer.fit_transform(newsgroups_train.data)
 
-    # task f
-    # binary SVM CV
-    elif args[1] == 'f':
-        pipe = Pipeline([('tfidf', TfidfVectorizer(tokenizer=StemTokenizer(), stop_words='english', min_df=2)),
-                         ('lsi', TruncatedSVD(n_components=50, random_state=42)),
-                         ('clf', svm.SVC(kernel='linear'))])
-        tuned_parameters = {'clf__C': [10**k for k in range(-3, 4)]}
-        grid = GridSearchCV(pipe, tuned_parameters, cv=5)
-        grid.fit(newsgroups_train.data, y_train)
-        y_score = grid.decision_function(newsgroups_test.data)
-        y_test_pred = grid.predict(newsgroups_test.data)
-        evaluate(y_test, y_test_pred, y_score, bin_classes)
+    if args[1] == '1':
+        print(tfidf.shape)
+    elif args[1] == '2':
+        km = KMeans(n_clusters=2)
+        km.fit(tfidf)
+        evaluate(y_train, km.labels_)
+    elif args[1] == '3':
+        #part a
+        svd = TruncatedSVD(n_components=1000, random_state=42)
+        svd.fit(tfidf)
+        ratio = [svd.explained_variance_ratio_[0]]
+        for r in range(1, 1000):
+            ratio.append(ratio[-1] + svd.explained_variance_ratio_[r])
+        plt.plot(range(0, 1000), ratio)
+        plt.xlabel('r')
+        plt.ylabel('ratio of the variance')
+        plt.show()
 
-    # task g
-    # binary naive bayes
-    elif args[1] == 'g':
-        pipe = Pipeline([('tfidf', TfidfVectorizer(tokenizer=StemTokenizer(), stop_words='english', min_df=2)),
-                         ('nmf', NMF(n_components=50, init='random', random_state=42)),
-                         ('clf', MultinomialNB())])
-        pipe.fit(newsgroups_train.data, y_train)
-        y_score = pipe.predict_proba(newsgroups_test.data)
-        y_test_pred = pipe.predict(newsgroups_test.data)
-        evaluate(y_test, y_test_pred, y_score[:, 1], bin_classes)
+        # part b
+        for r in [1, 2, 3, 5, 10, 20, 50, 100, 300]:
+            print("="*20)
+            print("For r = %d" % r)
+            print("SVD")
+            svd = TruncatedSVD(n_components=r, random_state=42)
+            svd_train = svd.fit_transform(tfidf)
+            km = KMeans(n_clusters=2)
+            km.fit(svd_train)
+            evaluate(y_train, km.labels_)
+            print("NMF")
+            nmf = NMF(n_components=r, init='random', random_state=42)
+            nmf_train = nmf.fit_transform(tfidf)
+            km = KMeans(n_clusters=2)
+            km.fit(nmf_train)
+            evaluate(y_train, km.labels_)
+            gc.collect()
+    elif args[1] == '4':
+        # part a
+        svd = TruncatedSVD(n_components=2, random_state=42)
+        svd_train = svd.fit_transform(tfidf)
+        km = KMeans(n_clusters=2)
+        km.fit(svd_train)
+        visualize(svd_train, km.labels_, km.cluster_centers_)
 
-    # task h
-    # binary logistic regression
-    elif args[1] == 'h':
-        pipe = Pipeline([('tfidf', TfidfVectorizer(tokenizer=StemTokenizer(), stop_words='english', min_df=2)),
-                         ('nmf', NMF(n_components=50, init='random', random_state=42)),
-                         ('clf', LogisticRegression())])
-        pipe.fit(newsgroups_train.data, y_train)
-        y_score = pipe.predict_proba(newsgroups_test.data)
-        y_test_pred = pipe.predict(newsgroups_test.data)
-        evaluate(y_test, y_test_pred, y_score[:, 1], bin_classes)
+        # part b
+        print("==unit variance==")
+        X_scaled = preprocessing.scale(svd_train)
+        del km
+        km = KMeans(n_clusters=2)
+        km.fit(X_scaled)
+        evaluate(y_train, km.labels_)
 
-    # task i
-    elif args[1] == 'i':
-        pipe = Pipeline([('tfidf', TfidfVectorizer(tokenizer=StemTokenizer(), stop_words='english', min_df=2)),
-                         ('nmf', NMF(n_components=50, init='random', random_state=42)),
-                         ('clf', LogisticRegression())])
-        tuned_parameters = {'clf__penalty': ['l1', 'l2'],
-                            'clf__C': [10**k for k in range(-3, 4)]}
-        grid = GridSearchCV(pipe, tuned_parameters)
-        grid.fit(newsgroups_train.data, y_train)
-        print(grid.best_params_)
-        print(grid.cv_results_)
+        print("==logarithm transform==")
+        nmf = NMF(n_components=50, init='random', random_state=42)
+        nmf_train = nmf.fit_transform(tfidf)
+        transformer = preprocessing.FunctionTransformer(np.log1p)
+        log_trans = transformer.transform(nmf_train)
+        del km
+        km = KMeans(n_clusters=2)
+        km.fit(log_trans)
+        evaluate(y_train, km.labels_)
 
-    # task j
-    # multiclass
-    elif args[1] == 'j':
-        train_set = fetch_20newsgroups(subset='train', categories=mult_classes, shuffle=True, random_state=42)
-        test_set = fetch_20newsgroups(subset='test', categories=mult_classes, shuffle=True, random_state=42)
+        print("==combine both==")
+        nmf = NMF(n_components=50, init='random', random_state=42)
+        nmf_train = nmf.fit_transform(tfidf)
+        transformer = preprocessing.FunctionTransformer(np.log1p)
 
-        pipe = Pipeline([('tfidf', TfidfVectorizer(tokenizer=StemTokenizer(), stop_words='english', min_df=2)),
-                         ('nmf', NMF(n_components=50, init='random', random_state=42)),
-                         ('clf', LogisticRegression())])
+        print("unit variance first:")
+        X_scaled = preprocessing.scale(nmf_train)
+        log_trans = transformer.transform(X_scaled)
+        del km
+        km = KMeans(n_clusters=2)
+        km.fit(log_trans)
+        evaluate(y_train, km.labels_)
 
-        param_grid = [{'clf': MultinomialNB()},
-                      {'clf': svm.SVC(kernel='linear')}, # The multiclass support of SVC is handled according to a one-vs-one scheme.
-                      {'clf': OneVsRestClassifier(svm.SVC(kernel='linear'))}]
-        for param in param_grid:
-            print(param)
-            pipe.set_params(**param)
-            pipe.fit(train_set.data, train_set.target)
-            if isinstance(param['clf'], MultinomialNB):
-                y_score = pipe.predict_proba(test_set.data)
-            else:
-                y_score = pipe.decision_function(test_set.data)
-            y_test_pred = pipe.predict(test_set.data)
-            evaluate(test_set.target, y_test_pred, y_score, mult_classes, binary=False)
-
+        print("log trans first:")
+        log_trans = transformer.transform(nmf_train)
+        X_scaled = preprocessing.scale(log_trans)
+        del km
+        km = KMeans(n_clusters=2)
+        km.fit(X_scaled)
+        evaluate(y_train, km.labels_)
+    elif args[1] == '5':
+        train = fetch_20newsgroups(subset='train', shuffle=True, random_state=42)
+        tfidf_vectorizer = TfidfVectorizer(stop_words='english', min_df=3)
+        tfidf = tfidf_vectorizer.fit_transform(train.data)
+        svd = TruncatedSVD(n_components=50, random_state=42)
+        nmf = NMF(n_components=50, init='random', random_state=42)
     else:
         print("undefined")
 
