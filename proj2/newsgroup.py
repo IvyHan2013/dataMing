@@ -37,42 +37,11 @@ mult_classes = ['comp.sys.ibm.pc.hardware',
 
 bin_classes = ['Computer Technology', 'Recreational Activity']
 
-def plot_confusion_matrix(cm, classes,
-                          normalize=False,
-                          title='Confusion matrix',
-                          cmap=plt.cm.Blues):
-    """
-    This function prints and plots the confusion matrix.
-    Normalization can be applied by setting `normalize=True`.
-    """
-    if normalize:
-        cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
-        print("Normalized confusion matrix")
-    else:
-        print('Confusion matrix, without normalization')
-
-    print(cm)
-
-    plt.imshow(cm, interpolation='nearest', cmap=cmap)
-    plt.title(title)
-    plt.colorbar()
-    tick_marks = np.arange(len(classes))
-    plt.xticks(tick_marks, classes, rotation=15)
-    plt.yticks(tick_marks, classes)
-
-    fmt = '.2f' if normalize else 'd'
-    thresh = cm.max() / 2.
-    for i, j in itertools.product(range(cm.shape[0]), range(cm.shape[1])):
-        plt.text(j, i, format(cm[i, j], fmt),
-                 horizontalalignment="center",
-                 color="white" if cm[i, j] > thresh else "black")
-    plt.show()
-
 def evaluate(y_true, y_pred):
     '''
     Evaluation by given metrics
     '''
-    print(contingency_matrix(y_true, y_pred))
+    # print(contingency_matrix(y_true, y_pred))
     print("Homogeneity: %0.3f" % metrics.homogeneity_score(y_true, y_pred))
     print("Completeness: %0.3f" % metrics.completeness_score(y_true, y_pred))
     print("V-measure: %0.3f" % metrics.v_measure_score(y_true, y_pred))
@@ -122,7 +91,7 @@ def main():
         km.fit(tfidf)
         evaluate(y_train, km.labels_)
     elif args[1] == '3':
-        #part a
+        # part a
         svd = TruncatedSVD(n_components=1000, random_state=42)
         svd.fit(tfidf)
         ratio = [svd.explained_variance_ratio_[0]]
@@ -200,8 +169,62 @@ def main():
         train = fetch_20newsgroups(subset='train', shuffle=True, random_state=42)
         tfidf_vectorizer = TfidfVectorizer(stop_words='english', min_df=3)
         tfidf = tfidf_vectorizer.fit_transform(train.data)
-        svd = TruncatedSVD(n_components=50, random_state=42)
-        nmf = NMF(n_components=50, init='random', random_state=42)
+
+        print("SVD")
+        svd = TruncatedSVD(n_components=20, random_state=42)
+        svd_train = svd.fit_transform(tfidf)
+        km = KMeans(n_clusters=20)
+        km.fit(svd_train)
+        evaluate(train.target, km.labels_)
+        del km
+
+        print("NMF")
+        nmf = NMF(n_components=20, init='random', random_state=42)
+        nmf_train = nmf.fit_transform(tfidf)
+        km = KMeans(n_clusters=20)
+        km.fit(nmf_train)
+        evaluate(train.target, km.labels_)
+        del km
+
+        print("Normalized SVD")
+        svd = TruncatedSVD(n_components=20, random_state=42)
+        svd_train = svd.fit_transform(tfidf)
+        X_scaled = preprocessing.scale(svd_train)
+        km = KMeans(n_clusters=20)
+        km.fit(X_scaled)
+        evaluate(train.target, km.labels_)
+        del km
+
+        print("Logarithm transformed NMF")
+        nmf = NMF(n_components=20, init='random', random_state=42)
+        nmf_train = nmf.fit_transform(tfidf)
+        transformer = preprocessing.FunctionTransformer(np.log1p)
+        log_trans = transformer.transform(nmf_train)
+        km = KMeans(n_clusters=20)
+        km.fit(log_trans)
+        evaluate(train.target, km.labels_)
+        del km
+
+        print("Normalized logarithm transformed NMF (Normalization first)")
+        nmf = NMF(n_components=20, init='random', random_state=42)
+        nmf_train = nmf.fit_transform(tfidf)
+        X_scaled = preprocessing.scale(svd_train)
+        transformer = preprocessing.FunctionTransformer(np.log1p)
+        log_trans = transformer.transform(X_scaled)
+        km = KMeans(n_clusters=20)
+        km.fit(log_trans)
+        evaluate(train.target, km.labels_)
+        del km
+
+        print("Normalized logarithm transformed NMF (Logarithm transformation first)")
+        nmf = NMF(n_components=20, init='random', random_state=42)
+        nmf_train = nmf.fit_transform(tfidf)
+        transformer = preprocessing.FunctionTransformer(np.log1p)
+        log_trans = transformer.transform(nmf_train)
+        X_scaled = preprocessing.scale(log_trans)
+        km = KMeans(n_clusters=20)
+        km.fit(X_scaled)
+        evaluate(train.target, km.labels_)
     else:
         print("undefined")
 
